@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">ALL SPOOFER</string>
+    <string name="notification_channel_name">Performance Service</string>
+    <string name="notification_text">Hardware-accelerated performance surface active.</string>
+    <string name="notification_title">⚡ Automated Monster Mode Active</string>
+    <string name="stop_action">⏹️ Stop Monster Mode</string>
+    <string name="accessibility_service_label">Accessibility service</string>
+    <string name="tile_label">Performance</string>
+</resources>

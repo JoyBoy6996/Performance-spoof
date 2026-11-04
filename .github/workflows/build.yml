@@ -1,0 +1,60 @@
+name: Build ABenchMark source reconstruction
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform
+        run: |
+          sdkmanager "platforms;android-37" "build-tools;37.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Build debug APK
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Verify APK identity and components
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.antutu.ABenchMark'"
+          "$ANDROID_HOME/build-tools/37.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > manifest-tree.txt
+          grep -F "com.antutu.ABenchMark.MainActivity" manifest-tree.txt
+          grep -F "com.antutu.ABenchMark.PerformanceService" manifest-tree.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABenchMark-source-build
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload manifest verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-verification
+          path: manifest-tree.txt
+          if-no-files-found: warn

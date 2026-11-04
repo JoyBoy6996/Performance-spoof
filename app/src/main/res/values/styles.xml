@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme_ALLSPOOFER" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">@color/purple_500</item>
+    </style>
+</resources>
