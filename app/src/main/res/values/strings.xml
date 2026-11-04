@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">ALL SPOOFER</string>
+    <string name="app_name">JoyBoy Spoof</string>
     <string name="notification_channel_name">Performance Service</string>
     <string name="notification_text">Hardware-accelerated performance surface active.</string>
     <string name="notification_title">⚡ Automated Monster Mode Active</string>
