@@ -13,10 +13,12 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
 
@@ -46,6 +48,7 @@ public final class PerformanceService extends Service {
 
     private static WeakReference<PerformanceService> instance;
     private static boolean isRunning;
+    private static boolean isStarting;
 
     private final Handler heartbeatHandler =
             new Handler(Looper.getMainLooper());
@@ -55,6 +58,7 @@ public final class PerformanceService extends Service {
     private WindowManager.LayoutParams overlayParams;
     private View overlayView;
     private WindowManager windowManager;
+    private boolean foregroundStarted;
 
     public PerformanceService() {
         super();
@@ -67,10 +71,6 @@ public final class PerformanceService extends Service {
         instance = new WeakReference<>(this);
 
         createNotificationChannel();
-        attachHardwareAcceleratedOverlay();
-        startHeartbeatPulse();
-
-        isRunning = true;
     }
 
     @Override
@@ -82,17 +82,44 @@ public final class PerformanceService extends Service {
             return START_NOT_STICKY;
         }
 
+        if (foregroundStarted) {
+            return START_STICKY;
+        }
+
         Notification notification = buildNotification();
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            );
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (RuntimeException exception) {
+            Log.e("PerformanceService", "Unable to enter foreground state", exception);
+            Toast.makeText(
+                    this,
+                    "Monster Mode could not start. Check system restrictions and try again.",
+                    Toast.LENGTH_LONG
+            ).show();
+            synchronized (PerformanceService.class) {
+                isStarting = false;
+                isRunning = false;
+            }
+            stopSelf(startId);
+            return START_NOT_STICKY;
         }
+
+        foregroundStarted = true;
+        synchronized (PerformanceService.class) {
+            isStarting = false;
+            isRunning = true;
+        }
+        attachHardwareAcceleratedOverlay();
+        startHeartbeatPulse();
 
         return START_STICKY;
     }
@@ -106,7 +133,10 @@ public final class PerformanceService extends Service {
     public void onDestroy() {
         detachOverlay();
         instance = null;
-        isRunning = false;
+        synchronized (PerformanceService.class) {
+            isStarting = false;
+            isRunning = false;
+        }
         super.onDestroy();
     }
 
@@ -164,12 +194,22 @@ public final class PerformanceService extends Service {
     }
 
     private void attachHardwareAcceleratedOverlay() {
+        View view = null;
+        WindowManager manager = null;
         try {
+            if (!Settings.canDrawOverlays(this)) {
+                Log.w("PerformanceService", "Overlay permission is no longer available");
+                return;
+            }
+
             if (overlayView != null) {
                 return;
             }
 
-            windowManager = (WindowManager) getSystemService("window");
+            manager = (WindowManager) getSystemService("window");
+            if (manager == null) {
+                return;
+            }
 
             // Original LayoutParams constructor:
             // width=2, height=2, type=2038, flags=16777496, format=-3.
@@ -186,33 +226,41 @@ public final class PerformanceService extends Service {
             params.x = 0;
             params.y = 0;
             params.alpha = 0.02f;
-            overlayParams = params;
-
-            View view = new View(this);
+            view = new View(this);
             view.setAlpha(0.02f);
             view.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            manager.addView(view, params);
+            windowManager = manager;
+            overlayParams = params;
             overlayView = view;
-
-            if (windowManager != null) {
-                windowManager.addView(view, params);
+        } catch (RuntimeException exception) {
+            if (view != null && manager != null && view.isAttachedToWindow()) {
+                try {
+                    manager.removeView(view);
+                } catch (RuntimeException cleanupException) {
+                    Log.w("PerformanceService", "Unable to clean up partial overlay", cleanupException);
+                }
             }
-        } catch (Throwable throwable) {
-            throwable.printStackTrace();
+            Log.w("PerformanceService", "Unable to attach overlay", exception);
         }
     }
 
     private void detachOverlay() {
         heartbeatHandler.removeCallbacks(heartbeatRunnable);
 
-        try {
-            if (overlayView != null && windowManager != null) {
-                windowManager.removeView(overlayView);
-            }
-        } catch (Throwable throwable) {
-            throwable.printStackTrace();
-        }
-
+        View view = overlayView;
+        WindowManager manager = windowManager;
         overlayView = null;
+        overlayParams = null;
+        windowManager = null;
+
+        try {
+            if (view != null && manager != null && view.isAttachedToWindow()) {
+                manager.removeView(view);
+            }
+        } catch (RuntimeException exception) {
+            Log.w("PerformanceService", "Unable to remove overlay", exception);
+        }
     }
 
     private void startHeartbeatPulse() {
@@ -222,11 +270,17 @@ public final class PerformanceService extends Service {
 
     private void stopForegroundService() {
         detachOverlay();
-        stopForeground(STOP_FOREGROUND_REMOVE);
+        if (foregroundStarted) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            foregroundStarted = false;
+        }
         stopSelf();
 
         instance = null;
-        isRunning = false;
+        synchronized (PerformanceService.class) {
+            isStarting = false;
+            isRunning = false;
+        }
     }
 
     /**
@@ -255,23 +309,38 @@ public final class PerformanceService extends Service {
         }
 
         public final boolean isRunning() {
-            return PerformanceService.isRunning;
+            synchronized (PerformanceService.class) {
+                return PerformanceService.isRunning;
+            }
         }
 
         public final void startService(Context context) {
             Objects.requireNonNull(context, "context");
 
+            synchronized (PerformanceService.class) {
+                if (isStarting || isRunning) {
+                    return;
+                }
+                isStarting = true;
+            }
+
             Intent intent = new Intent(context, PerformanceService.class);
             intent.setAction(ACTION_START_SERVICE);
-            context.startForegroundService(intent);
+            try {
+                context.startForegroundService(intent);
+            } catch (RuntimeException exception) {
+                synchronized (PerformanceService.class) {
+                    isStarting = false;
+                }
+                throw exception;
+            }
         }
 
         public final void stopService(Context context) {
             Objects.requireNonNull(context, "context");
 
             Intent intent = new Intent(context, PerformanceService.class);
-            intent.setAction(ACTION_STOP_SERVICE);
-            context.startService(intent);
+            context.stopService(intent);
         }
     }
 }

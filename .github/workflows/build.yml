@@ -2,7 +2,7 @@ name: Build ABenchMark source reconstruction
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, fix/coloros-compatibility]
   workflow_dispatch:
 
 permissions:
