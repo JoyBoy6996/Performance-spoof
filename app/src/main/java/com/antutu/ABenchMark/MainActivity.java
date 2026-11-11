@@ -34,12 +34,16 @@ import androidx.core.content.ContextCompat;
 public final class MainActivity extends ComponentActivity {
 
     public static final int $stable = 8;
+    private static final long ACTIVATION_POLL_INTERVAL_MS = 100L;
+    private static final long ACTIVATION_TIMEOUT_MS = 2000L;
 
     private final ActivityResultLauncher<String> notificationPermissionLauncher;
     private final ActivityResultLauncher<Intent> overlayPermissionLauncher;
     private final ActivityResultLauncher<Intent> batteryPermissionLauncher;
     private boolean activationPending;
     private boolean activationComplete;
+    private long activationRequestedAt;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public MainActivity() {
         super();
@@ -160,6 +164,11 @@ public final class MainActivity extends ComponentActivity {
         PowerManager powerManager =
                 (PowerManager) getSystemService(POWER_SERVICE);
 
+        if (powerManager == null) {
+            showRecovery("Battery optimization service is unavailable on this device.");
+            return;
+        }
+
         if (!powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
             Toast.makeText(
                     this,
@@ -188,12 +197,13 @@ public final class MainActivity extends ComponentActivity {
         }
 
         activationPending = true;
-        final long requestedAt = android.os.SystemClock.elapsedRealtime();
+        activationRequestedAt = android.os.SystemClock.elapsedRealtime();
+        Diagnostics.record(this, "starting", null);
         try {
             PerformanceService.Companion.startService(this);
-            new Handler(Looper.getMainLooper()).postDelayed(
-                    () -> confirmActivation(requestedAt),
-                    150L
+            mainHandler.postDelayed(
+                    this::confirmActivation,
+                    ACTIVATION_POLL_INTERVAL_MS
             );
         } catch (RuntimeException exception) {
             showRecovery("Foreground service request failed: "
@@ -201,16 +211,29 @@ public final class MainActivity extends ComponentActivity {
         }
     }
 
-    private void confirmActivation(long requestedAt) {
-        activationPending = false;
-        if (!PerformanceService.isOperational()) {
-            String failure = PerformanceService.getLastFailure();
-            showRecovery(failure.isEmpty()
-                    ? "The performance overlay did not become ready."
-                    : failure);
+    private void confirmActivation() {
+        if (PerformanceService.isOperational()) {
+            completeActivation();
             return;
         }
 
+        long elapsed = android.os.SystemClock.elapsedRealtime() - activationRequestedAt;
+        if (elapsed < ACTIVATION_TIMEOUT_MS) {
+            mainHandler.postDelayed(this::confirmActivation, ACTIVATION_POLL_INTERVAL_MS);
+            return;
+        }
+
+        String failure = PerformanceService.getLastFailure();
+        if (failure.isEmpty()) {
+            failure = Diagnostics.lastError(this);
+        }
+        showRecovery(failure.isEmpty()
+                ? "The performance overlay did not become ready within 2 seconds."
+                : failure);
+    }
+
+    private void completeActivation() {
+        activationPending = false;
         activationComplete = true;
         Toast.makeText(
                 this,
@@ -224,8 +247,8 @@ public final class MainActivity extends ComponentActivity {
         }
 
         long remainingDelay = Math.max(0L, 500L
-                - (android.os.SystemClock.elapsedRealtime() - requestedAt));
-        new Handler(Looper.getMainLooper()).postDelayed(
+                - (android.os.SystemClock.elapsedRealtime() - activationRequestedAt));
+        mainHandler.postDelayed(
                 () -> moveTaskToBack(true),
                 remainingDelay
         );
@@ -233,6 +256,7 @@ public final class MainActivity extends ComponentActivity {
 
     private void showRecovery(String reason) {
         activationPending = false;
+        mainHandler.removeCallbacksAndMessages(null);
         Diagnostics.record(this, "recovery shown", reason);
         RecoveryActivity.show(this, reason);
         finish();

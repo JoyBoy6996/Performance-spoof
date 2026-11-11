@@ -7,7 +7,7 @@ import java.util.Locale;
 /** Uses only public build identifiers; no OEM-private APIs or intents are used. */
 public final class RomCompatibility {
 
-    public enum Family { ORIGIN_OS, COLOR_OS, HYPER_OS, STANDARD_ANDROID }
+    public enum Family { ORIGIN_OS, OPLUS_FAMILY, HYPER_OS, STANDARD_ANDROID }
 
     private RomCompatibility() { }
 
@@ -19,7 +19,7 @@ public final class RomCompatibility {
         }
         if (contains(manufacturer, "oppo", "oneplus", "realme", "oplus")
                 || contains(brand, "oppo", "oneplus", "realme", "oplus")) {
-            return Family.COLOR_OS;
+            return Family.OPLUS_FAMILY;
         }
         if (contains(manufacturer, "xiaomi", "redmi", "poco")
                 || contains(brand, "xiaomi", "redmi", "poco")) {
@@ -30,18 +30,18 @@ public final class RomCompatibility {
 
     public static String guidance(Family family) {
         switch (family) {
-            case COLOR_OS:
-                return "ColorOS setup required:\n\n"
+            case OPLUS_FAMILY:
+                return "OPlus-family setup required:\n\n"
                         + "1. Allow Display over other apps.\n"
                         + "2. Set battery use to Unrestricted / Don't optimize.\n"
                         + "3. If your device offers Background activity, allow it for this app.\n\n"
-                        + "Names and locations vary by ColorOS version.";
+                        + "Names and locations vary by ColorOS, OxygenOS, and realme UI version.";
             case HYPER_OS:
                 return "HyperOS setup required:\n\n"
                         + "1. Allow Display over other apps.\n"
                         + "2. Set Battery saver to No restrictions.\n"
-                        + "3. Optionally enable Auto-start for better persistence.\n\n"
-                        + "Auto-start remains a setting you control.";
+                        + "3. Auto-start is not needed for this running session.\n\n"
+                        + "Auto-start matters only if a future version adds boot-time startup.";
             case ORIGIN_OS:
                 return "OriginOS setup required:\n\n"
                         + "Allow Display over other apps and Unrestricted battery usage, then retry.";
