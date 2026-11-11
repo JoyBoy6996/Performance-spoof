@@ -2,7 +2,7 @@ name: Build ABenchMark source reconstruction
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, fix/poco-x6-pro-hyperos-2]
   workflow_dispatch:
 
 permissions:
