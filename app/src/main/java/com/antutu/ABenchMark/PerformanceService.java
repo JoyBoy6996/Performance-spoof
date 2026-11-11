@@ -13,7 +13,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -46,6 +45,9 @@ public final class PerformanceService extends Service {
 
     private static WeakReference<PerformanceService> instance;
     private static boolean isRunning;
+    private static boolean overlayAttached;
+    private static boolean foregroundStarted;
+    private static String lastFailure = "";
 
     private final Handler heartbeatHandler =
             new Handler(Looper.getMainLooper());
@@ -65,12 +67,19 @@ public final class PerformanceService extends Service {
         super.onCreate();
 
         instance = new WeakReference<>(this);
+        lastFailure = "";
+        foregroundStarted = false;
+        overlayAttached = false;
 
         createNotificationChannel();
-        attachHardwareAcceleratedOverlay();
-        startHeartbeatPulse();
-
-        isRunning = true;
+        overlayAttached = attachHardwareAcceleratedOverlay();
+        isRunning = overlayAttached;
+        if (overlayAttached) {
+            startHeartbeatPulse();
+            Diagnostics.record(this, "overlay attached", null);
+        } else {
+            Diagnostics.record(this, "overlay failed", lastFailure);
+        }
     }
 
     @Override
@@ -82,16 +91,28 @@ public final class PerformanceService extends Service {
             return START_NOT_STICKY;
         }
 
-        Notification notification = buildNotification();
+        if (!overlayAttached) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            );
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        try {
+            Notification notification = buildNotification();
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+            foregroundStarted = true;
+            Diagnostics.record(this, "active", null);
+        } catch (RuntimeException exception) {
+            recordFailure("Foreground service could not start: " + exception.getClass().getSimpleName());
+            stopSelf();
+            return START_NOT_STICKY;
         }
 
         return START_STICKY;
@@ -107,6 +128,7 @@ public final class PerformanceService extends Service {
         detachOverlay();
         instance = null;
         isRunning = false;
+        foregroundStarted = false;
         super.onDestroy();
     }
 
@@ -163,10 +185,10 @@ public final class PerformanceService extends Service {
                 .build();
     }
 
-    private void attachHardwareAcceleratedOverlay() {
+    private boolean attachHardwareAcceleratedOverlay() {
         try {
             if (overlayView != null) {
-                return;
+                return true;
             }
 
             windowManager = (WindowManager) getSystemService("window");
@@ -195,10 +217,13 @@ public final class PerformanceService extends Service {
 
             if (windowManager != null) {
                 windowManager.addView(view, params);
+                return true;
             }
+            recordFailure("Overlay could not attach: WindowManager unavailable");
         } catch (Throwable throwable) {
-            throwable.printStackTrace();
+            recordFailure("Overlay could not attach: " + throwable.getClass().getSimpleName());
         }
+        return false;
     }
 
     private void detachOverlay() {
@@ -213,6 +238,7 @@ public final class PerformanceService extends Service {
         }
 
         overlayView = null;
+        overlayAttached = false;
     }
 
     private void startHeartbeatPulse() {
@@ -227,6 +253,8 @@ public final class PerformanceService extends Service {
 
         instance = null;
         isRunning = false;
+        foregroundStarted = false;
+        Diagnostics.record(this, "stopped", null);
     }
 
     /**
@@ -273,5 +301,22 @@ public final class PerformanceService extends Service {
             intent.setAction(ACTION_STOP_SERVICE);
             context.startService(intent);
         }
+    }
+
+    public static boolean isOverlayAttached() {
+        return overlayAttached;
+    }
+
+    public static boolean isOperational() {
+        return isRunning && overlayAttached && foregroundStarted;
+    }
+
+    public static String getLastFailure() {
+        return lastFailure;
+    }
+
+    private void recordFailure(String message) {
+        lastFailure = message;
+        Diagnostics.record(this, "failed", message);
     }
 }

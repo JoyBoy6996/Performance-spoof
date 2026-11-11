@@ -37,6 +37,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="com.antutu.ABenchMark.RecoveryActivity"
+            android:exported="false"
+            android:theme="@style/Theme_ALLSPOOFER" />
+
         <service
             android:name="com.antutu.ABenchMark.PerformanceService"
             android:enabled="true"

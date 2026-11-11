@@ -1,7 +1,6 @@
 package com.antutu.ABenchMark;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -39,6 +38,8 @@ public final class MainActivity extends ComponentActivity {
     private final ActivityResultLauncher<String> notificationPermissionLauncher;
     private final ActivityResultLauncher<Intent> overlayPermissionLauncher;
     private final ActivityResultLauncher<Intent> batteryPermissionLauncher;
+    private boolean activationPending;
+    private boolean activationComplete;
 
     public MainActivity() {
         super();
@@ -46,17 +47,37 @@ public final class MainActivity extends ComponentActivity {
         // Registration order recovered from MainActivity.<init>() in DEX.
         notificationPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestPermission(),
-                granted -> checkAndStartService()
+                granted -> {
+                    if (granted || Build.VERSION.SDK_INT < 33) {
+                        checkAndStartService();
+                    } else {
+                        showRecovery("Notification permission was not granted.");
+                    }
+                }
         );
 
         overlayPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
-                result -> checkAndStartService()
+                result -> {
+                    if (Settings.canDrawOverlays(this)) {
+                        checkAndStartService();
+                    } else {
+                        showRecovery("Display over other apps permission was not granted.");
+                    }
+                }
         );
 
         batteryPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
-                result -> checkAndStartService()
+                result -> {
+                    PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+                    if (powerManager != null
+                            && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+                        checkAndStartService();
+                    } else {
+                        showRecovery("Unrestricted battery usage was not granted.");
+                    }
+                }
         );
     }
 
@@ -97,13 +118,13 @@ public final class MainActivity extends ComponentActivity {
         overridePendingTransition(0, 0);
         enableImmersiveStickyMode();
 
-        if (Settings.canDrawOverlays(this)
+        if (!activationPending && Settings.canDrawOverlays(this)
                 && !PerformanceService.Companion.isRunning()) {
             checkAndStartService();
             return;
         }
 
-        if (PerformanceService.Companion.isRunning()) {
+        if (PerformanceService.Companion.isRunning() && !activationPending) {
             if (isInMultiWindowMode()) {
                 finish();
                 return;
@@ -117,6 +138,9 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void checkAndStartService() {
+        if (activationPending || activationComplete) {
+            return;
+        }
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(
                     this,
@@ -163,8 +187,31 @@ public final class MainActivity extends ComponentActivity {
             return;
         }
 
-        PerformanceService.Companion.startService(this);
+        activationPending = true;
+        final long requestedAt = android.os.SystemClock.elapsedRealtime();
+        try {
+            PerformanceService.Companion.startService(this);
+            new Handler(Looper.getMainLooper()).postDelayed(
+                    () -> confirmActivation(requestedAt),
+                    150L
+            );
+        } catch (RuntimeException exception) {
+            showRecovery("Foreground service request failed: "
+                    + exception.getClass().getSimpleName());
+        }
+    }
 
+    private void confirmActivation(long requestedAt) {
+        activationPending = false;
+        if (!PerformanceService.isOperational()) {
+            String failure = PerformanceService.getLastFailure();
+            showRecovery(failure.isEmpty()
+                    ? "The performance overlay did not become ready."
+                    : failure);
+            return;
+        }
+
+        activationComplete = true;
         Toast.makeText(
                 this,
                 "🔥 100% Automated Monster Mode Active! Open BGMI now.",
@@ -176,10 +223,19 @@ public final class MainActivity extends ComponentActivity {
             return;
         }
 
+        long remainingDelay = Math.max(0L, 500L
+                - (android.os.SystemClock.elapsedRealtime() - requestedAt));
         new Handler(Looper.getMainLooper()).postDelayed(
                 () -> moveTaskToBack(true),
-                500L
+                remainingDelay
         );
+    }
+
+    private void showRecovery(String reason) {
+        activationPending = false;
+        Diagnostics.record(this, "recovery shown", reason);
+        RecoveryActivity.show(this, reason);
+        finish();
     }
 
     private void enableImmersiveStickyMode() {
