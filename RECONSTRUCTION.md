@@ -35,15 +35,13 @@ methods, while retaining the same behavior and app component names.
 ## MainActivity behavior recovered
 
 - Extends `androidx.activity.ComponentActivity`.
-- Registers three Activity Result launchers in constructor order:
-  notification permission, overlay settings, battery-optimization settings.
+- Registers an Activity Result launcher for overlay settings.
 - On creation, removes transition animation, sets a transparent background,
   clears `FLAG_DIM_BEHIND`, adds window flags `0x01000218`, sets window alpha
   to zero, enables immersive sticky mode, installs a transparent full-screen
   View, then checks permissions and starts the service.
-- Overlay permission is checked first.
-- Unrestricted battery usage is checked second.
-- Notification permission is checked on Android 13+ third.
+- Overlay permission is the only permission gate for activation.
+- Battery optimization and notification permission are optional and are not requested during activation.
 - The service is started with `ACTION_START_SERVICE`.
 - The Activity shows the original activation toast.
 - In multi-window mode it finishes. Otherwise it moves the task to the back
@@ -62,10 +60,9 @@ methods, while retaining the same behavior and app component names.
 - Notification ID: 1001.
 - Channel importance: `IMPORTANCE_LOW`.
 - Channel description: `Notification channel for Performance Service`.
-- `onCreate()` stores a WeakReference, creates the channel, attaches the
-  overlay, schedules the heartbeat, and marks the static running flag true.
-- `onStartCommand()` stops on ACTION_STOP; otherwise it builds the notification
-  and calls startForeground. On API 34+, the service type is
+- `onCreate()` stores a WeakReference and initializes service state.
+- `onStartCommand()` stops on ACTION_STOP; otherwise it creates the notification
+  channel and enters foreground before attaching the overlay. On API 34+, the service type is
   `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` (`0x40000000`).
 - `onBind()` returns null.
 - `onDestroy()` detaches the overlay and clears static state.
@@ -79,7 +76,9 @@ methods, while retaining the same behavior and app component names.
 - Position: x=0, y=0.
 - Alpha: 0.02.
 - View layer type: 2 (`LAYER_TYPE_HARDWARE`).
-- Overlay add/remove failures catch `Throwable` and print the stack trace.
+- Overlay failures are recorded in local diagnostics with exception type and message.
+- ROM guidance uses public Android `Build` fields and does not claim a specific
+  vendor OS when its build identifiers do not expose one.
 
 ## Resource values recovered from resources.arsc
 
@@ -103,7 +102,7 @@ comments, formatting, source file structure, or exact Kotlin syntax. Some
 Kotlin-generated callback bridge names are compiler artifacts and are replaced
 by equivalent Java callbacks.
 
-The original package and component names, permission sequence, Activity
+The original package and component names, Activity
 transparency/background behavior, 500 ms and 200 ms delays, service lifecycle,
 notification action, overlay geometry, and heartbeat timing are represented.
 

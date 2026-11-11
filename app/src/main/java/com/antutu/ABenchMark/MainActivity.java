@@ -1,6 +1,5 @@
 package com.antutu.ABenchMark;
 
-import android.Manifest;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -9,7 +8,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,7 +20,6 @@ import android.widget.Toast;
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.core.content.ContextCompat;
 
 /**
  * Reconstructed from com.antutu.ABenchMark.MainActivity in classes.dex.
@@ -37,9 +34,7 @@ public final class MainActivity extends ComponentActivity {
     private static final long ACTIVATION_POLL_INTERVAL_MS = 100L;
     private static final long ACTIVATION_TIMEOUT_MS = 2000L;
 
-    private final ActivityResultLauncher<String> notificationPermissionLauncher;
     private final ActivityResultLauncher<Intent> overlayPermissionLauncher;
-    private final ActivityResultLauncher<Intent> batteryPermissionLauncher;
     private boolean activationPending;
     private boolean activationComplete;
     private long activationRequestedAt;
@@ -47,18 +42,6 @@ public final class MainActivity extends ComponentActivity {
 
     public MainActivity() {
         super();
-
-        // Registration order recovered from MainActivity.<init>() in DEX.
-        notificationPermissionLauncher = registerForActivityResult(
-                new ActivityResultContracts.RequestPermission(),
-                granted -> {
-                    if (granted || Build.VERSION.SDK_INT < 33) {
-                        checkAndStartService();
-                    } else {
-                        showRecovery("Notification permission was not granted.");
-                    }
-                }
-        );
 
         overlayPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -71,18 +54,6 @@ public final class MainActivity extends ComponentActivity {
                 }
         );
 
-        batteryPermissionLauncher = registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(),
-                result -> {
-                    PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-                    if (powerManager != null
-                            && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-                        checkAndStartService();
-                    } else {
-                        showRecovery("Unrestricted battery usage was not granted.");
-                    }
-                }
-        );
     }
 
     @Override
@@ -158,41 +129,6 @@ public final class MainActivity extends ComponentActivity {
                     packageUri
             );
             overlayPermissionLauncher.launch(overlayIntent);
-            return;
-        }
-
-        PowerManager powerManager =
-                (PowerManager) getSystemService(POWER_SERVICE);
-
-        if (powerManager == null) {
-            showRecovery("Battery optimization service is unavailable on this device.");
-            return;
-        }
-
-        if (!powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-            Toast.makeText(
-                    this,
-                    "Please allow Unrestricted Battery usage for continuous Monster Mode.",
-                    Toast.LENGTH_LONG
-            ).show();
-
-            Uri packageUri = Uri.parse("package:" + getPackageName());
-            Intent batteryIntent = new Intent(
-                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                    packageUri
-            );
-            batteryPermissionLauncher.launch(batteryIntent);
-            return;
-        }
-
-        if (Build.VERSION.SDK_INT >= 33
-                && ContextCompat.checkSelfPermission(
-                        this,
-                        Manifest.permission.POST_NOTIFICATIONS
-                ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            notificationPermissionLauncher.launch(
-                    Manifest.permission.POST_NOTIFICATIONS
-            );
             return;
         }
 

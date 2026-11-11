@@ -54,6 +54,7 @@ public final class Diagnostics {
         String lastError = lastError(context);
 
         return "ROM family: " + RomCompatibility.detect()
+                + "\nBuild identifiers: " + RomCompatibility.buildIdentifiers()
                 + "\nRecorded ROM family: " + lastRomFamily
                 + "\nOverlay permission: " + Settings.canDrawOverlays(context)
                 + "\nBattery unrestricted: " + batteryUnrestricted

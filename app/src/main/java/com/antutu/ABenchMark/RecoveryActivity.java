@@ -55,7 +55,7 @@ public final class RecoveryActivity extends Activity {
         content.addView(overlaySettings);
 
         Button batterySettings = new Button(this);
-        batterySettings.setText("Request unrestricted battery use");
+        batterySettings.setText("Optional: review battery settings");
         batterySettings.setOnClickListener(v -> startActivity(new Intent(
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:" + getPackageName())

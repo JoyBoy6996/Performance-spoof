@@ -71,22 +71,6 @@ public final class PerformanceService extends Service {
         foregroundStarted = false;
         overlayAttached = false;
 
-        try {
-            createNotificationChannel();
-            overlayAttached = attachHardwareAcceleratedOverlay();
-            isRunning = overlayAttached;
-            if (overlayAttached) {
-                startHeartbeatPulse();
-                Diagnostics.record(this, "overlay attached", null);
-            } else {
-                Diagnostics.record(this, "overlay_failed", lastFailure);
-            }
-        } catch (RuntimeException exception) {
-            isRunning = false;
-            recordFailure("overlay_failed", "Service initialization failed: "
-                    + exception.getClass().getSimpleName());
-            stopSelf();
-        }
     }
 
     @Override
@@ -98,13 +82,8 @@ public final class PerformanceService extends Service {
             return START_NOT_STICKY;
         }
 
-        if (!overlayAttached) {
-            Diagnostics.record(this, "overlay_failed", lastFailure);
-            stopSelf();
-            return START_NOT_STICKY;
-        }
-
         try {
+            createNotificationChannel();
             Notification notification = buildNotification();
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(
@@ -116,10 +95,33 @@ public final class PerformanceService extends Service {
                 startForeground(NOTIFICATION_ID, notification);
             }
             foregroundStarted = true;
-            Diagnostics.record(this, "active", null);
         } catch (RuntimeException exception) {
             recordFailure("foreground_failed", "Foreground service could not start: "
-                    + exception.getClass().getSimpleName());
+                    + failureDetails(exception));
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        try {
+            overlayAttached = attachHardwareAcceleratedOverlay();
+            if (!overlayAttached) {
+                if (lastFailure.isEmpty()) {
+                    recordFailure("overlay_failed", "Overlay could not attach.");
+                }
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                foregroundStarted = false;
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+
+            isRunning = true;
+            startHeartbeatPulse();
+            Diagnostics.record(this, "active", null);
+        } catch (RuntimeException exception) {
+            isRunning = false;
+            recordFailure("overlay_failed", failureDetails(exception));
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            foregroundStarted = false;
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -155,7 +157,10 @@ public final class PerformanceService extends Service {
         );
 
         NotificationManager manager =
-                (NotificationManager) getSystemService("notification");
+                getSystemService(NotificationManager.class);
+        if (manager == null) {
+            throw new IllegalStateException("Notification manager unavailable.");
+        }
         manager.createNotificationChannel(channel);
     }
 
@@ -211,7 +216,7 @@ public final class PerformanceService extends Service {
                     new WindowManager.LayoutParams(
                             2,
                             2,
-                            2038,
+                            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                             16777496,
                             PixelFormat.TRANSLUCENT
                     );
@@ -232,9 +237,9 @@ public final class PerformanceService extends Service {
                 return true;
             }
             recordFailure("overlay_failed", "Overlay could not attach: WindowManager unavailable");
-        } catch (Throwable throwable) {
+        } catch (RuntimeException exception) {
             recordFailure("overlay_failed", "Overlay could not attach: "
-                    + throwable.getClass().getSimpleName());
+                    + failureDetails(exception));
         }
         return false;
     }
@@ -246,9 +251,8 @@ public final class PerformanceService extends Service {
             if (overlayView != null && windowManager != null) {
                 windowManager.removeView(overlayView);
             }
-        } catch (Throwable throwable) {
-            recordFailure("teardown_failed", "Overlay could not detach: "
-                    + throwable.getClass().getSimpleName());
+        } catch (RuntimeException exception) {
+            recordFailure("teardown_failed", failureDetails(exception));
         }
 
         overlayView = null;
@@ -332,5 +336,11 @@ public final class PerformanceService extends Service {
     private void recordFailure(String state, String message) {
         lastFailure = message;
         Diagnostics.record(this, state, message);
+    }
+
+    private static String failureDetails(RuntimeException exception) {
+        String message = exception.getMessage();
+        return exception.getClass().getSimpleName()
+                + (message == null || message.trim().isEmpty() ? "" : ": " + message);
     }
 }

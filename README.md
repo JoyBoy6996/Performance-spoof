@@ -46,8 +46,7 @@ The project contains reconstructed Java source code, Android resources, Gradle c
 
 - Transparent Activity implementation.
 - Handles overlay permission.
-- Handles battery optimization exemption.
-- Handles notification permission on Android 13+.
+- Requests overlay permission when needed; battery and notification permissions are optional.
 - Starts the foreground service.
 - Uses the original 500 ms background delay.
 - Uses the original 200 ms resume background delay.
@@ -159,9 +158,10 @@ app/build/outputs/apk/debug/app-debug.apk
 - Target Android version: API 36.
 - Uses Android foreground service APIs.
 - Requires appropriate permissions for overlay functionality.
-- Android 13+ notification permission handling is included.
+- Notification permission and battery optimization exemption are not activation requirements.
+- HyperOS, MIUI, ColorOS, OxygenOS, realme UI, OriginOS, and Funtouch OS are identified when their public build identifiers expose the ROM name. Otherwise diagnostics report an unidentified vendor variant rather than guessing.
 
-Actual service behavior and permission availability may vary across Android versions and OEM implementations.
+The service enters foreground before attaching the overlay. OEM background management can still stop services, so the recovery screen offers version-dependent guidance without relying on private APIs. Build-time checks do not verify behavior on physical OEM devices.
 
 ## ⚠️ Important Notes
 
