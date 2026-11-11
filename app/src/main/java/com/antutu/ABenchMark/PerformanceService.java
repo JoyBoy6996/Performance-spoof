@@ -188,14 +188,14 @@ public final class PerformanceService extends Service {
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setWhen(System.currentTimeMillis())
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(getString(R.string.notification_title))
                 .setContentText(getString(R.string.notification_text))
                 .setContentIntent(contentPendingIntent)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .addAction(
-                        R.mipmap.ic_launcher,
+                        R.drawable.ic_notification,
                         getString(R.string.stop_action),
                         stopPendingIntent
                 )

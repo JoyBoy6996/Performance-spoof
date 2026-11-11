@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
@@ -32,11 +33,13 @@ public final class MainActivity extends ComponentActivity {
 
     public static final int $stable = 8;
     private static final long ACTIVATION_POLL_INTERVAL_MS = 100L;
-    private static final long ACTIVATION_TIMEOUT_MS = 2000L;
+    private static final long ACTIVATION_TIMEOUT_MS = 4000L;
 
     private final ActivityResultLauncher<Intent> overlayPermissionLauncher;
+    private final ActivityResultLauncher<Intent> batteryPermissionLauncher;
     private boolean activationPending;
     private boolean activationComplete;
+    private boolean batteryAsked;
     private long activationRequestedAt;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -52,6 +55,10 @@ public final class MainActivity extends ComponentActivity {
                         showRecovery("Display over other apps permission was not granted.");
                     }
                 }
+        );
+        batteryPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> checkAndStartService()
         );
 
     }
@@ -92,6 +99,9 @@ public final class MainActivity extends ComponentActivity {
 
         overridePendingTransition(0, 0);
         enableImmersiveStickyMode();
+        if (!activationPending && !PerformanceService.Companion.isRunning()) {
+            activationComplete = false;
+        }
 
         if (!activationPending && Settings.canDrawOverlays(this)
                 && !PerformanceService.Companion.isRunning()) {
@@ -132,6 +142,18 @@ public final class MainActivity extends ComponentActivity {
             return;
         }
 
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())
+                && !batteryAsked) {
+            batteryAsked = true;
+            Intent batteryIntent = new Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())
+            );
+            batteryPermissionLauncher.launch(batteryIntent);
+            return;
+        }
+
         activationPending = true;
         activationRequestedAt = android.os.SystemClock.elapsedRealtime();
         Diagnostics.record(this, "starting", null);
@@ -164,7 +186,7 @@ public final class MainActivity extends ComponentActivity {
             failure = Diagnostics.lastError(this);
         }
         showRecovery(failure.isEmpty()
-                ? "The performance overlay did not become ready within 2 seconds."
+                ? "The performance overlay did not become ready within 4 seconds."
                 : failure);
     }
 
