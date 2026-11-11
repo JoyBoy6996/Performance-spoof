@@ -14,7 +14,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 
@@ -46,6 +45,7 @@ public final class PerformanceService extends Service {
 
     private static WeakReference<PerformanceService> instance;
     private static boolean isRunning;
+    private static boolean startRequested;
 
     private final Handler heartbeatHandler =
             new Handler(Looper.getMainLooper());
@@ -65,12 +65,6 @@ public final class PerformanceService extends Service {
         super.onCreate();
 
         instance = new WeakReference<>(this);
-
-        createNotificationChannel();
-        attachHardwareAcceleratedOverlay();
-        startHeartbeatPulse();
-
-        isRunning = true;
     }
 
     @Override
@@ -82,16 +76,32 @@ public final class PerformanceService extends Service {
             return START_NOT_STICKY;
         }
 
-        Notification notification = buildNotification();
+        try {
+            createNotificationChannel();
+            Notification notification = buildNotification();
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            );
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+
+            isRunning = true;
+            attachHardwareAcceleratedOverlay();
+            startHeartbeatPulse();
+        } catch (RuntimeException exception) {
+            Log.e("PerformanceService", "Unable to start foreground service", exception);
+            detachOverlay();
+            isRunning = false;
+            synchronized (PerformanceService.class) {
+                startRequested = false;
+            }
+            stopSelf(startId);
+            return START_NOT_STICKY;
         }
 
         return START_STICKY;
@@ -107,6 +117,9 @@ public final class PerformanceService extends Service {
         detachOverlay();
         instance = null;
         isRunning = false;
+        synchronized (PerformanceService.class) {
+            startRequested = false;
+        }
         super.onDestroy();
     }
 
@@ -121,8 +134,10 @@ public final class PerformanceService extends Service {
         );
 
         NotificationManager manager =
-                (NotificationManager) getSystemService("notification");
-        manager.createNotificationChannel(channel);
+            (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.createNotificationChannel(channel);
+        }
     }
 
     private Notification buildNotification() {
@@ -164,12 +179,16 @@ public final class PerformanceService extends Service {
     }
 
     private void attachHardwareAcceleratedOverlay() {
+        if (overlayView != null) {
+            return;
+        }
+
         try {
-            if (overlayView != null) {
+            WindowManager manager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (manager == null) {
+                Log.w("PerformanceService", "WindowManager is unavailable");
                 return;
             }
-
-            windowManager = (WindowManager) getSystemService("window");
 
             // Original LayoutParams constructor:
             // width=2, height=2, type=2038, flags=16777496, format=-3.
@@ -186,33 +205,38 @@ public final class PerformanceService extends Service {
             params.x = 0;
             params.y = 0;
             params.alpha = 0.02f;
-            overlayParams = params;
 
             View view = new View(this);
             view.setAlpha(0.02f);
             view.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            manager.addView(view, params);
+            windowManager = manager;
+            overlayParams = params;
             overlayView = view;
-
-            if (windowManager != null) {
-                windowManager.addView(view, params);
-            }
-        } catch (Throwable throwable) {
-            throwable.printStackTrace();
+        } catch (RuntimeException exception) {
+            Log.e("PerformanceService", "Unable to attach performance overlay", exception);
+            overlayView = null;
+            overlayParams = null;
+            windowManager = null;
         }
     }
 
     private void detachOverlay() {
         heartbeatHandler.removeCallbacks(heartbeatRunnable);
 
-        try {
-            if (overlayView != null && windowManager != null) {
-                windowManager.removeView(overlayView);
-            }
-        } catch (Throwable throwable) {
-            throwable.printStackTrace();
-        }
-
+        View view = overlayView;
+        WindowManager manager = windowManager;
         overlayView = null;
+        overlayParams = null;
+        windowManager = null;
+
+        try {
+            if (view != null && manager != null) {
+                manager.removeView(view);
+            }
+        } catch (RuntimeException exception) {
+            Log.w("PerformanceService", "Unable to remove performance overlay", exception);
+        }
     }
 
     private void startHeartbeatPulse() {
@@ -223,10 +247,11 @@ public final class PerformanceService extends Service {
     private void stopForegroundService() {
         detachOverlay();
         stopForeground(STOP_FOREGROUND_REMOVE);
-        stopSelf();
-
-        instance = null;
         isRunning = false;
+        synchronized (PerformanceService.class) {
+            startRequested = false;
+        }
+        stopSelf();
     }
 
     /**
@@ -261,9 +286,23 @@ public final class PerformanceService extends Service {
         public final void startService(Context context) {
             Objects.requireNonNull(context, "context");
 
+            synchronized (PerformanceService.class) {
+                if (isRunning || startRequested) {
+                    return;
+                }
+                startRequested = true;
+            }
+
             Intent intent = new Intent(context, PerformanceService.class);
             intent.setAction(ACTION_START_SERVICE);
-            context.startForegroundService(intent);
+            try {
+                context.startForegroundService(intent);
+            } catch (RuntimeException exception) {
+                synchronized (PerformanceService.class) {
+                    startRequested = false;
+                }
+                throw exception;
+            }
         }
 
         public final void stopService(Context context) {

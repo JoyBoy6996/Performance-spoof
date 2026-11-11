@@ -1,7 +1,6 @@
 package com.antutu.ABenchMark;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -14,7 +13,6 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
@@ -39,6 +37,8 @@ public final class MainActivity extends ComponentActivity {
     private final ActivityResultLauncher<String> notificationPermissionLauncher;
     private final ActivityResultLauncher<Intent> overlayPermissionLauncher;
     private final ActivityResultLauncher<Intent> batteryPermissionLauncher;
+    private boolean notificationPermissionHandled;
+    private boolean serviceStartRequested;
 
     public MainActivity() {
         super();
@@ -46,17 +46,35 @@ public final class MainActivity extends ComponentActivity {
         // Registration order recovered from MainActivity.<init>() in DEX.
         notificationPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestPermission(),
-                granted -> checkAndStartService()
+                granted -> {
+                    notificationPermissionHandled = true;
+                    checkAndStartService();
+                }
         );
 
         overlayPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
-                result -> checkAndStartService()
+                result -> {
+                    if (Settings.canDrawOverlays(this)) {
+                        checkAndStartService();
+                    } else {
+                        showPermissionDenied("Display over other apps");
+                    }
+                }
         );
 
         batteryPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
-                result -> checkAndStartService()
+                result -> {
+                    PowerManager powerManager =
+                            (PowerManager) getSystemService(POWER_SERVICE);
+                    if (powerManager != null
+                            && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+                        checkAndStartService();
+                    } else {
+                        showPermissionDenied("Unrestricted Battery usage");
+                    }
+                }
         );
     }
 
@@ -97,12 +115,6 @@ public final class MainActivity extends ComponentActivity {
         overridePendingTransition(0, 0);
         enableImmersiveStickyMode();
 
-        if (Settings.canDrawOverlays(this)
-                && !PerformanceService.Companion.isRunning()) {
-            checkAndStartService();
-            return;
-        }
-
         if (PerformanceService.Companion.isRunning()) {
             if (isInMultiWindowMode()) {
                 finish();
@@ -136,7 +148,8 @@ public final class MainActivity extends ComponentActivity {
         PowerManager powerManager =
                 (PowerManager) getSystemService(POWER_SERVICE);
 
-        if (!powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+        if (powerManager != null
+            && !powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
             Toast.makeText(
                     this,
                     "Please allow Unrestricted Battery usage for continuous Monster Mode.",
@@ -157,13 +170,30 @@ public final class MainActivity extends ComponentActivity {
                         this,
                         Manifest.permission.POST_NOTIFICATIONS
                 ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            notificationPermissionLauncher.launch(
-                    Manifest.permission.POST_NOTIFICATIONS
-            );
+            if (!notificationPermissionHandled) {
+                notificationPermissionLauncher.launch(
+                        Manifest.permission.POST_NOTIFICATIONS
+                );
+                return;
+            }
+        }
+
+        if (serviceStartRequested || PerformanceService.Companion.isRunning()) {
             return;
         }
 
-        PerformanceService.Companion.startService(this);
+        serviceStartRequested = true;
+        try {
+            PerformanceService.Companion.startService(this);
+        } catch (RuntimeException exception) {
+            serviceStartRequested = false;
+            Toast.makeText(
+                    this,
+                    "Unable to start Monster Mode. Please try again.",
+                    Toast.LENGTH_LONG
+            ).show();
+            return;
+        }
 
         Toast.makeText(
                 this,
@@ -180,6 +210,14 @@ public final class MainActivity extends ComponentActivity {
                 () -> moveTaskToBack(true),
                 500L
         );
+    }
+
+    private void showPermissionDenied(String permissionName) {
+        Toast.makeText(
+                this,
+                permissionName + " permission is required for Monster Mode.",
+                Toast.LENGTH_LONG
+        ).show();
     }
 
     private void enableImmersiveStickyMode() {
