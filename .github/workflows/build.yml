@@ -25,10 +25,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -70,20 +70,24 @@ jobs:
             "$AAPT" dump xmltree "$apk" AndroidManifest.xml > manifest-tree.txt
             grep -F "com.antutu.ABenchMark.MainActivity" manifest-tree.txt
             grep -F "com.antutu.ABenchMark.PerformanceService" manifest-tree.txt
-            grep -F "iqoo_performance_service_channel" manifest-tree.txt || true
             echo "::endgroup::"
           done
 
+      # Artifact names may not contain a slash, and the branch names here are
+      # of the form port/<rom>, so flatten them.
+      - name: Resolve the artifact name
+        run: echo "ARTIFACT_NAME=PerformanceSpoof-$(echo '${{ github.ref_name }}' | tr '/' '-' | tr -cd '[:alnum:]._-')" >> "$GITHUB_ENV"
+
       - name: Upload the APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: PerformanceSpoof-${{ github.ref_name }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: app/build/outputs/apk/*/app-*.apk
           if-no-files-found: error
 
       - name: Upload the manifest verification
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: manifest-verification-${{ github.ref_name }}
+          name: manifest-verification-${{ env.ARTIFACT_NAME }}
           path: manifest-tree.txt
           if-no-files-found: warn
