@@ -20,9 +20,11 @@ android {
     }
 
     signingConfigs {
-        // The release key is gitignored, so it is only present on a machine
-        // that built it locally. Without it the release variant falls back to
-        // the debug key, which keeps CI able to produce an installable APK.
+        // One shared key for every build and every ROM variant. It is
+        // committed on purpose: a CI runner generates a throwaway debug key
+        // on every job, so an unsigned-against-debug build would fail to
+        // install over the previous one with INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+        // Sharing this key keeps the upgrade path intact across CI runs.
         if (file("perfs.poof-release.jks").exists()) {
             create("release") {
                 storeFile = file("perfs.poof-release.jks")
@@ -36,12 +38,18 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with the same shared key as the release variant, so the
+            // two can be swapped on a device without an uninstall.
+            signingConfig = if (file("perfs.poof-release.jks").exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
         release {
             isMinifyEnabled = false
-            // Signed with the locally generated release key so the release APK
-            // can be installed directly.
+            // Signed with the shared release key so the APK installs over an
+            // earlier build of any of the ROM variants.
             signingConfig = if (file("perfs.poof-release.jks").exists()) {
                 signingConfigs.getByName("release")
             } else {
