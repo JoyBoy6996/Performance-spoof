@@ -1,0 +1,6 @@
+id=perfspoof-hyperos
+name=Performance Spoof (HyperOS watchdog)
+version=1.0
+versionCode=1
+author=JoyBoy / HyperOS port
+description=Keeps com.antutu.ABenchMark alive on HyperOS. Re-applies the AppOps, doze whitelist, standby bucket and freezer exemptions, and restarts the performance service when HyperOS stops it. The app itself is installed separately.

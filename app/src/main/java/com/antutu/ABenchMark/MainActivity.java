@@ -129,6 +129,11 @@ public final class MainActivity extends ComponentActivity {
         }
 
         if (PerformanceService.Companion.isRunning() && !activationPending) {
+            // The service survived, so re-assert the HyperOS exemptions. They
+            // are wiped by a reboot and by some HyperOS background policies.
+            HyperOsGuard.applyAsync(this, null);
+            ServiceWatchdog.schedule(this);
+
             if (isInMultiWindowMode()) {
                 finish();
                 return;
@@ -201,6 +206,8 @@ public final class MainActivity extends ComponentActivity {
         Diagnostics.record(this, "starting", null);
         try {
             PerformanceService.Companion.startService(this);
+            // Keep the watchdog armed even if the service was already running.
+            ServiceWatchdog.schedule(this);
             mainHandler.postDelayed(
                     this::confirmActivation,
                     ACTIVATION_POLL_INTERVAL_MS

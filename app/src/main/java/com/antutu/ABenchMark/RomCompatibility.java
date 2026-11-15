@@ -39,8 +39,12 @@ public final class RomCompatibility {
             case HYPER_OS:
                 return "HyperOS setup required:\n\n"
                         + "1. Allow Display over other apps.\n"
-                        + "2. Set Battery saver to No restrictions.\n"
-                        + "3. Auto-start is not needed for this running session.\n\n"
+                        + "2. Settings > Apps > " + appLabelHint() + " > Battery saver > No restrictions.\n"
+                        + "3. Settings > Apps > " + appLabelHint() + " > Autostart > ON.\n"
+                        + "4. Settings > Apps > " + appLabelHint() + " > Other permissions > Start in background > allow.\n"
+                        + "5. Tap 'Apply HyperOS protections' below if root or Shizuku is available.\n\n"
+                        + "HyperOS freezes background processes (Greezer and the memory\n"
+                        + "freezer) and destroys the overlay surface of a frozen app.\n"
                         + "Auto-start matters only if a future version adds boot-time startup.";
             case ORIGIN_OS:
                 return "OriginOS setup required:\n\n"
@@ -49,6 +53,11 @@ public final class RomCompatibility {
                 return "Android setup required:\n\n"
                         + "Allow Display over other apps and remove battery optimization for this app, then retry.";
         }
+    }
+
+    /** Short hint used in the setup instructions. */
+    private static String appLabelHint() {
+        return "this app";
     }
 
     private static String normalized(String value) {

@@ -1,18 +1,29 @@
-name: Build ABenchMark source reconstruction
+name: Build APK
 
 on:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
+      - hyperos
+      - coloros
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Build and upload the APK
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -21,41 +32,57 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Android SDK platform and build-tools
+      - name: Raise the Gradle heap
+        # The committed value is sized for a small sandbox. CI has more room,
+        # and the Compose compiler plus the dex merge want it.
+        run: |
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8/' gradle.properties
+          cat gradle.properties
+
+      - name: Install the Android SDK
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Build the debug and release APKs
+        run: ./gradlew --no-daemon assembleDebug assembleRelease
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon clean assembleDebug
-
-      - name: Verify APK identity and components
+      - name: Verify the APK identity
         run: |
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -f "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.antutu.ABenchMark'"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > manifest-tree.txt
-          grep -F "com.antutu.ABenchMark.MainActivity" manifest-tree.txt
-          grep -F "com.antutu.ABenchMark.PerformanceService" manifest-tree.txt
+          set -e
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/*/app-*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "No APK was produced." >&2
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            echo "::group::$(basename "$apk")"
+            "$AAPT" dump badging "$apk" | grep -F "package: name='com.antutu.ABenchMark'"
+            "$AAPT" dump xmltree "$apk" AndroidManifest.xml > manifest-tree.txt
+            grep -F "com.antutu.ABenchMark.MainActivity" manifest-tree.txt
+            grep -F "com.antutu.ABenchMark.PerformanceService" manifest-tree.txt
+            grep -F "iqoo_performance_service_channel" manifest-tree.txt || true
+            echo "::endgroup::"
+          done
 
-      - name: Upload APK
+      - name: Upload the APKs
         uses: actions/upload-artifact@v4
         with:
-          name: ABenchMark-source-build
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: PerformanceSpoof-${{ github.ref_name }}
+          path: app/build/outputs/apk/*/app-*.apk
           if-no-files-found: error
 
-      - name: Upload manifest verification
+      - name: Upload the manifest verification
         uses: actions/upload-artifact@v4
         with:
-          name: manifest-verification
+          name: manifest-verification-${{ github.ref_name }}
           path: manifest-tree.txt
           if-no-files-found: warn
