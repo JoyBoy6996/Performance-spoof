@@ -3,6 +3,7 @@ build/
 **/build/
 local.properties
 *.jks
+!app/perfs.poof-release.jks
 *.keystore
 *.zip
 
