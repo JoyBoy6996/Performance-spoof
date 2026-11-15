@@ -1,3 +1,5 @@
+[![Build APK](https://github.com/JoyBoy6996/Performance-spoof/actions/workflows/build.yml/badge.svg?branch=port/master)](https://github.com/JoyBoy6996/Performance-spoof/actions/workflows/build.yml)
+
 # Performance Spoof — MASTER build
 
 One application for **OriginOS / Funtouch OS**, **ColorOS / OxygenOS / realme UI**
@@ -229,3 +231,25 @@ Outputs:
 
 The release key is `app/perfs.poof-release.jks` (alias and password
 `perfspoof`). Replace it before publishing anything.
+
+---
+
+## 9. Build on GitHub Actions
+
+Every push to this branch runs `.github/workflows/build.yml`, which needs no
+secrets and no local setup:
+
+| Step | What it does |
+|---|---|
+| Build | `assembleDebug` + `assembleRelease` on JDK 17 / SDK 36 |
+| Verify | `aapt dump badging` must report `package: name='com.antutu.ABenchMark'`, and the manifest must contain `MainActivity` and `PerformanceService` |
+| Artifact | the APKs are attached to the run as `PerformanceSpoof-port/<rom>` |
+| Release | the same APKs are published on the release tag `ci-PerformanceSpoof-port/<rom>` and are downloadable without logging in |
+
+Download the latest build from either place:
+
+* Runs — <https://github.com/JoyBoy6996/Performance-spoof/actions>
+* Releases — <https://github.com/JoyBoy6996/Performance-spoof/releases>
+
+The signing key `app/perfs.poof-release.jks` is committed, so the CI-built APK
+carries the same signature as a local build and installs over it in place.
