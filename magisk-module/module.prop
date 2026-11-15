@@ -1,0 +1,6 @@
+id=perfspoof-master
+name=Performance Spoof (master watchdog)
+version=2.0
+versionCode=3
+author=JoyBoy / master port
+description=Keeps com.antutu.ABenchMark alive on OriginOS, ColorOS, OxygenOS, realme UI and HyperOS. Re-applies the AppOps, doze whitelist, standby bucket and vendor exemptions, and restarts the performance service when the ROM stops it. The app itself is installed separately.

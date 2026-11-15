@@ -1,9 +1,13 @@
 <resources>
-    <string name="app_name">JoyBoy Spoof</string>
+    <string name="app_name">Performance Spoof</string>
     <string name="notification_channel_name">Performance Service</string>
     <string name="notification_text">Hardware-accelerated performance surface active.</string>
     <string name="notification_title">⚡ Automated Monster Mode Active</string>
     <string name="stop_action">⏹️ Stop Monster Mode</string>
     <string name="accessibility_service_label">Accessibility service</string>
     <string name="tile_label">Performance</string>
+    <string name="setup_shortcut_short">Setup</string>
+    <string name="setup_shortcut_long">Setup and game boost</string>
+    <string name="quick_activate_short">Quick activate</string>
+    <string name="quick_activate_long">Quick activate Monster Mode</string>
 </resources>

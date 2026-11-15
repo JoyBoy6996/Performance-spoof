@@ -4,7 +4,10 @@ import android.os.Build;
 
 import java.util.Locale;
 
-/** Uses only public build identifiers; no OEM-private APIs or intents are used. */
+/**
+ * Uses only public build identifiers; no OEM-private APIs or intents are used
+ * to detect the ROM family.
+ */
 public final class RomCompatibility {
 
     public enum Family { ORIGIN_OS, OPLUS_FAMILY, HYPER_OS, STANDARD_ANDROID }
@@ -31,20 +34,38 @@ public final class RomCompatibility {
     public static String guidance(Family family) {
         switch (family) {
             case OPLUS_FAMILY:
-                return "OPlus-family setup required:\n\n"
-                        + "1. Allow Display over other apps.\n"
-                        + "2. Set battery use to Unrestricted / Don't optimize.\n"
-                        + "3. If your device offers Background activity, allow it for this app.\n\n"
-                        + "Names and locations vary by ColorOS, OxygenOS, and realme UI version.";
+                return "ColorOS setup required:\n\n"
+                        + "1. Settings > Apps > this app > Allow display over other apps.\n"
+                        + "2. Settings > Apps > Auto-launch > this app > ON.\n"
+                        + "3. Settings > Apps > App management > this app > Battery usage:\n"
+                        + "     Allow background activity ON, Allow foreground activity ON,\n"
+                        + "     Optimize battery use OFF.\n"
+                        + "4. Settings > Battery > Power saving settings > App quick freeze:\n"
+                        + "     remove this app from the freeze list.\n"
+                        + "5. Settings > Battery > Power saver options > Sleep standby\n"
+                        + "     optimisation OFF.\n"
+                        + "6. Pull the card down in Recents to lock it.\n\n"
+                        + "ColorOS has no Monster Mode. The performance boost is the\n"
+                        + "AOSP performance game mode, applied from the setup screen.";
             case HYPER_OS:
                 return "HyperOS setup required:\n\n"
                         + "1. Allow Display over other apps.\n"
-                        + "2. Set Battery saver to No restrictions.\n"
-                        + "3. Auto-start is not needed for this running session.\n\n"
-                        + "Auto-start matters only if a future version adds boot-time startup.";
+                        + "2. Settings > Apps > this app > Battery saver > No restrictions.\n"
+                        + "3. Settings > Apps > this app > Autostart > ON.\n"
+                        + "4. Settings > Apps > this app > Other permissions > Start in background > allow.\n"
+                        + "5. Tap 'Apply ROM protections' below if root or Shizuku is available.\n\n"
+                        + "HyperOS freezes background processes (Greezer and the memory\n"
+                        + "freezer) and destroys the overlay surface of a frozen app.";
             case ORIGIN_OS:
                 return "OriginOS setup required:\n\n"
-                        + "Allow Display over other apps and Unrestricted battery usage, then retry.";
+                        + "1. Settings > Apps > this app > Allow display over other apps.\n"
+                        + "2. Settings > Battery > Background power consumption management >\n"
+                        + "     this app > allow background power usage.\n"
+                        + "3. Settings > Battery > this app > Unrestricted.\n"
+                        + "4. i Manager > App manager > Autostart manager > this app > ON.\n"
+                        + "5. Pull the card down in Recents to lock it.\n\n"
+                        + "OriginOS grants the performance profile when it sees the running\n"
+                        + "benchmark, so the spoof needs the process and the overlay alive.";
             default:
                 return "Android setup required:\n\n"
                         + "Allow Display over other apps and remove battery optimization for this app, then retry.";

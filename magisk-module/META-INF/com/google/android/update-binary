@@ -1,0 +1,3 @@
+#!/sbin/sh
+# Stub installer: this module only ships scripts, so it does nothing on flash.
+exit 0

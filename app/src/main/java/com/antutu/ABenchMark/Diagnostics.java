@@ -61,6 +61,8 @@ public final class Diagnostics {
                 + "\nNotifications enabled: " + notificationsEnabled
                 + "\nOverlay attached: " + PerformanceService.isOverlayAttached()
                 + "\nForeground service active: " + PerformanceService.isOperational()
+                + "\nROM guards applied: " + RomGuard.isGuarded(context)
+                + "\nPrivileged backend: " + ShellBridge.resolvedBackend()
                 + "\nLast state: " + lastState
                 + "\nLast update: " + (lastUpdatedAt == 0L ? "never" : lastUpdatedAt)
                 + "\nLast error: " + (lastError.isEmpty() ? "none" : lastError);

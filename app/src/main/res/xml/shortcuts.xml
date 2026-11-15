@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher shortcuts.
+
+  A normal tap on the launcher icon opens the master dashboard. The long
+  press menu offers the two entry points:
+
+    * Setup and game boost - opens the dashboard.
+    * Quick activate - opens the original transparent activation trampoline,
+      which asks for the permissions, starts the service and moves itself to
+      the back in one go.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_stat_spoof"
+        android:shortcutId="setup"
+        android:shortcutLongLabel="@string/setup_shortcut_long"
+        android:shortcutShortLabel="@string/setup_shortcut_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.antutu.ABenchMark.ui.MasterActivity"
+            android:targetPackage="com.antutu.ABenchMark" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_stat_spoof"
+        android:shortcutId="quick_activate"
+        android:shortcutLongLabel="@string/quick_activate_long"
+        android:shortcutShortLabel="@string/quick_activate_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.antutu.ABenchMark.MainActivity"
+            android:targetPackage="com.antutu.ABenchMark" />
+    </shortcut>
+</shortcuts>

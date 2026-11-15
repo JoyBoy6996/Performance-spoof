@@ -2,4 +2,14 @@
     <style name="Theme_ALLSPOOFER" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:colorAccent">@color/purple_500</item>
     </style>
+
+    <!-- The master dashboard draws its own Material 3 surface, so the
+         platform theme only has to provide a window background that matches
+         the system light/dark setting. -->
+    <style name="Theme_PerformanceSpoof" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
 </resources>

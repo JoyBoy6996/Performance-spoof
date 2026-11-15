@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Status bar small icon.
+
+  The original app used a full colour launcher bitmap (R.mipmap.ic_launcher) as
+  the notification small icon. The platform only tints monochrome shapes, so a
+  colour PNG renders as an unreadable white blob in the HyperOS shade. This
+  vector keeps the same lightning glyph but in the correct single colour
+  format. The notification title, text, channel and id are unchanged.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="13,2L4.5,13.2C4.1,13.7 4.4,14.4 5,14.4h5.1L9.7,21.4c-0.1,0.5 0.6,0.8 0.9,0.4l8.8,-11.6c0.4,-0.5 0.1,-1.2 -0.5,-1.2h-5.4l1.6,-6.2C15.2,2.4 14.1,1.7 13,2z" />
+</vector>

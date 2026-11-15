@@ -1,5 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -19,13 +22,56 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        // The release key is gitignored, so it is only present on a machine
+        // that built it locally. Without it the release variant falls back to
+        // the debug key, which keeps CI able to produce an installable APK.
+        if (file("perfs.poof-release.jks").exists()) {
+            create("release") {
+                storeFile = file("perfs.poof-release.jks")
+                storePassword = "perfspoof"
+                keyAlias = "perfspoof"
+                keyPassword = "perfspoof"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false
+            // Signed with the locally generated release key so the release APK
+            // can be installed directly.
+            signingConfig = if (file("perfs.poof-release.jks").exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -52,6 +98,7 @@ dependencies {
     implementation("androidx.compose.material:material:1.10.4")
     implementation("androidx.compose.material:material-ripple:1.10.4")
     implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("androidx.compose.material:material-icons-core:1.7.8")
     implementation("androidx.compose.runtime:runtime:1.11.0")
     implementation("androidx.compose.runtime:runtime-annotation:1.11.0")
     implementation("androidx.compose.runtime:runtime-saveable:1.11.0")
@@ -98,6 +145,11 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+
+    // HyperOS port: ADB shell identity used to re-apply the HyperOS AppOps,
+    // doze whitelist, standby bucket and freezer exemptions.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.10.4")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.10.4")
