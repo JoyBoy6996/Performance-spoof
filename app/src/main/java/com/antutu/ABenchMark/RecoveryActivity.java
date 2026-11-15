@@ -11,11 +11,22 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
-/** Shown only when standard activation cannot complete. */
+/**
+ * Shown only when standard activation cannot complete.
+ *
+ * <p>On HyperOS this screen is also the manual repair console: it exposes the
+ * ADB-shell hardening commands (via root or Shizuku) that the automatic path
+ * uses, plus the vendor settings screens that cannot be reached through a
+ * standard Android intent.
+ */
 public final class RecoveryActivity extends Activity {
 
     public static final String EXTRA_REASON = "reason";
+
+    private final android.os.Handler mainHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
 
     public static void show(Activity source, String reason) {
         Intent intent = new Intent(source, RecoveryActivity.class);
@@ -70,6 +81,66 @@ public final class RecoveryActivity extends Activity {
             startActivity(intent);
         });
         content.addView(settings);
+
+        Button autostart = new Button(this);
+        autostart.setText("Open auto-start settings (HyperOS)");
+        autostart.setOnClickListener(v -> {
+            if (!RomGuard.openAutostartSettings(this)) {
+                Toast.makeText(this,
+                        "Auto-start screen not available on this ROM.",
+                        Toast.LENGTH_LONG).show();
+            }
+        });
+        content.addView(autostart);
+
+        Button shizuku = new Button(this);
+        shizuku.setText("Authorize Shizuku (no root)");
+        shizuku.setOnClickListener(v -> {
+            // The backend may have been resolved as NONE before Shizuku was
+            // running, so force a fresh probe on the next privileged call.
+            ShellBridge.invalidate();
+            ShellBridge.ShizukuBridge.requestPermission(this);
+            Toast.makeText(this,
+                    "If Shizuku is running, accept the request, then tap Apply.",
+                    Toast.LENGTH_LONG).show();
+        });
+        content.addView(shizuku);
+
+        Button apply = new Button(this);
+        apply.setText("Apply ROM protections");
+        apply.setOnClickListener(v -> {
+            Toast.makeText(this, "Applying HyperOS protections...",
+                    Toast.LENGTH_SHORT).show();
+            ShellBridge.invalidate();
+            RomGuard.applyAsync(this, () -> mainHandler.post(() ->
+                    Toast.makeText(this, "HyperOS protections applied.",
+                            Toast.LENGTH_LONG).show()));
+        });
+        content.addView(apply);
+
+        Button preview = new Button(this);
+        preview.setText("Show protection status");
+        preview.setOnClickListener(v -> {
+            TextView report = new TextView(this);
+            report.setTextSize(13);
+            report.setPadding(padding, padding, padding, padding);
+            content.addView(report);
+            report.setText("Collecting...");
+            // The privileged backend probe must not run on the UI thread.
+            new Thread(() -> {
+                String text = RomGuard.summary(this);
+                mainHandler.post(() -> report.setText(text));
+            }, "perf-spoof-report").start();
+        });
+        content.addView(preview);
+
+        Button setup = new Button(this);
+        setup.setText("Open setup & game boost");
+        setup.setOnClickListener(v -> {
+            Intent intent = new Intent(this, SetupActivity.class);
+            startActivity(intent);
+        });
+        content.addView(setup);
 
         Button retry = new Button(this);
         retry.setText("Retry activation");

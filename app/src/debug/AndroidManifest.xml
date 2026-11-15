@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only manifest overlay.
+
+  These two activity declarations were present in the original merged
+  manifest of the reconstructed APK. They are kept in the debug build so the
+  debug manifest stays identical to the original, and left out of the release
+  build because:
+
+    * androidx.compose.ui.tooling.PreviewActivity only exists in the
+      debugImplementation variant of androidx.compose.ui:ui-tooling, so a
+      release build would ship a manifest entry pointing at a missing class.
+    * androidx.activity.ComponentActivity is an abstract class and can never
+      be instantiated.
+
+  Some HyperOS builds enumerate every activity of an installed package when
+  they build the recents thumbnail or the app information sheet, which turns a
+  missing or abstract activity class into a ClassNotFoundException.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="androidx.compose.ui.tooling.PreviewActivity"
+            android:exported="true" />
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="true" />
+    </application>
+</manifest>

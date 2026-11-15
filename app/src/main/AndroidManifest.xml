@@ -1,10 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <permission
         android:name="com.antutu.ABenchMark.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
@@ -42,23 +44,59 @@
             android:exported="false"
             android:theme="@style/Theme_ALLSPOOFER" />
 
+        <!-- Setup console. Reachable from the launcher icon long press, so a
+             normal tap keeps the original transparent-launch behaviour. -->
+        <activity
+            android:name="com.antutu.ABenchMark.SetupActivity"
+            android:exported="true"
+            android:label="@string/setup_shortcut_long"
+            android:theme="@style/Theme_ALLSPOOFER">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Exported so that the shell identity (adb shell or Shizuku) can
+             restart the service from the background. The stop action is not
+             reachable from outside: it goes through the non-exported
+             StopReceiver. -->
         <service
             android:name="com.antutu.ABenchMark.PerformanceService"
             android:enabled="true"
-            android:exported="false"
+            android:exported="true"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Performance overlay service" />
         </service>
 
-        <!-- Present in the original merged manifest. -->
-        <activity
-            android:name="androidx.compose.ui.tooling.PreviewActivity"
-            android:exported="true" />
-        <activity
-            android:name="androidx.activity.ComponentActivity"
-            android:exported="true" />
+        <!-- Stop action of the foreground notification. Not exported, so no
+             other app can stop the service. -->
+        <receiver
+            android:name="com.antutu.ABenchMark.StopReceiver"
+            android:exported="false" />
+
+        <!-- Watchdog + boot start. The receiver re-arms the alarm and
+             restarts the service after the ROM stops it. -->
+        <receiver
+            android:name="com.antutu.ABenchMark.WatchdogReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Shizuku provider: grants the ADB shell identity used to re-apply
+             the HyperOS AppOps, doze and freezer exemptions. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <uses-library
             android:name="androidx.window.extensions"

@@ -7,12 +7,14 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -28,6 +30,15 @@ import java.util.Objects;
  * Preserves the original service class name, action strings, notification
  * channel, notification ID, transparent overlay geometry, heartbeat cadence,
  * start/stop lifecycle and foreground-service type.
+ *
+ * <p>HyperOS port notes: the service is promoted to the foreground inside
+ * {@link #onCreate()} instead of {@link #onStartCommand()}, because HyperOS
+ * stops special-use foreground services that take too long to call
+ * {@code startForeground()} and the platform then raises
+ * {@code ForegroundServiceDidNotStopInTimeException} in this process. The
+ * overlay is attached only after the promotion succeeded, so the
+ * hardware-accelerated surface is never created for a service that is not
+ * actually in the foreground.
  */
 public final class PerformanceService extends Service {
 
@@ -42,6 +53,11 @@ public final class PerformanceService extends Service {
     public static final int NOTIFICATION_ID = 1001;
 
     public static final Companion Companion = new Companion();
+
+    private static final String PREFS = "service_state";
+    private static final String KEY_USER_STOPPED = "user_stopped";
+    private static final String KEY_STOP_TOKEN = "stop_token";
+    private static final String EXTRA_STOP_TOKEN = "com.antutu.ABenchMark.extra.STOP_TOKEN";
 
     private static WeakReference<PerformanceService> instance;
     private static boolean isRunning;
@@ -71,8 +87,17 @@ public final class PerformanceService extends Service {
         foregroundStarted = false;
         overlayAttached = false;
 
+        // Promote first. On HyperOS a slow promotion is fatal, and the overlay
+        // is only meaningful while the service is in the foreground.
+        boolean promoted = promoteToForeground();
+        if (!promoted) {
+            recordFailure("foreground_failed",
+                    "Foreground service could not start: " + lastFailure);
+            stopSelf();
+            return;
+        }
+
         try {
-            createNotificationChannel();
             overlayAttached = attachHardwareAcceleratedOverlay();
             isRunning = overlayAttached;
             if (overlayAttached) {
@@ -86,7 +111,12 @@ public final class PerformanceService extends Service {
             recordFailure("overlay_failed", "Service initialization failed: "
                     + exception.getClass().getSimpleName());
             stopSelf();
+            return;
         }
+
+        // Re-apply the HyperOS exemptions every time the service comes up.
+        RomGuard.applyAsync(this, null);
+        ServiceWatchdog.schedule(this);
     }
 
     @Override
@@ -94,8 +124,32 @@ public final class PerformanceService extends Service {
         String action = intent != null ? intent.getAction() : null;
 
         if (ACTION_STOP_SERVICE.equals(action)) {
-            stopForegroundService();
+            // The service is exported so that the shell identity can restart
+            // it. The stop action is guarded by a per install secret that no
+            // other app can read, so only this app can stop the spoof.
+            if (isAuthorisedStop(intent)) {
+                stopForegroundService();
+            } else {
+                Log.w("PerfSpoof/Service", "ignored an unauthorised stop request");
+            }
             return START_NOT_STICKY;
+        }
+
+        setUserStopped(this, false);
+        clearStopMarker();
+
+        if (!foregroundStarted && !promoteToForeground()) {
+            Diagnostics.record(this, "foreground_failed", lastFailure);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        if (!overlayAttached) {
+            overlayAttached = attachHardwareAcceleratedOverlay();
+            isRunning = overlayAttached;
+            if (overlayAttached) {
+                startHeartbeatPulse();
+            }
         }
 
         if (!overlayAttached) {
@@ -117,19 +171,30 @@ public final class PerformanceService extends Service {
             }
             foregroundStarted = true;
             Diagnostics.record(this, "active", null);
-        } catch (RuntimeException exception) {
+        } catch (Throwable throwable) {
             recordFailure("foreground_failed", "Foreground service could not start: "
-                    + exception.getClass().getSimpleName());
+                    + throwable.getClass().getSimpleName());
             stopSelf();
             return START_NOT_STICKY;
         }
 
+        ServiceWatchdog.schedule(this);
         return START_STICKY;
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        // HyperOS clears the whole task and the service with it. Re-arm the
+        // watchdog so the overlay comes back unless the user asked to stop.
+        if (!isUserStopped(this)) {
+            ServiceWatchdog.scheduleRestart(this);
+        }
     }
 
     @Override
@@ -142,6 +207,36 @@ public final class PerformanceService extends Service {
             Diagnostics.record(this, "stopped", null);
         }
         super.onDestroy();
+    }
+
+    /**
+     * Promotes the service to the foreground. Returns false and records the
+     * reason in {@link #lastFailure} when the platform refused.
+     */
+    private boolean promoteToForeground() {
+        if (foregroundStarted) {
+            return true;
+        }
+        try {
+            createNotificationChannel();
+            Notification notification = buildNotification();
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+            foregroundStarted = true;
+            return true;
+        } catch (Throwable throwable) {
+            lastFailure = throwable.getClass().getSimpleName()
+                    + (throwable.getMessage() == null ? "" : ": " + throwable.getMessage());
+            Log.w("PerfSpoof/Service", "promote failed: " + lastFailure);
+            return false;
+        }
     }
 
     private void createNotificationChannel() {
@@ -160,13 +255,16 @@ public final class PerformanceService extends Service {
     }
 
     private Notification buildNotification() {
-        Intent stopIntent = new Intent(this, PerformanceService.class);
+        // The stop request goes through the non-exported StopReceiver so the
+        // exported service can be started by the shell or by a Shizuku session
+        // without exposing the stop action to other apps.
+        Intent stopIntent = new Intent(this, StopReceiver.class);
         stopIntent.setAction(ACTION_STOP_SERVICE);
 
         int pendingIntentFlags =
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
 
-        PendingIntent stopPendingIntent = PendingIntent.getService(
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(
                 this,
                 0,
                 stopIntent,
@@ -183,14 +281,14 @@ public final class PerformanceService extends Service {
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setWhen(System.currentTimeMillis())
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_spoof)
                 .setContentTitle(getString(R.string.notification_title))
                 .setContentText(getString(R.string.notification_text))
                 .setContentIntent(contentPendingIntent)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .addAction(
-                        R.mipmap.ic_launcher,
+                        R.drawable.ic_stat_spoof,
                         getString(R.string.stop_action),
                         stopPendingIntent
                 )
@@ -261,8 +359,16 @@ public final class PerformanceService extends Service {
     }
 
     private void stopForegroundService() {
+        setUserStopped(this, true);
+        writeStopMarker();
         detachOverlay();
-        stopForeground(STOP_FOREGROUND_REMOVE);
+        ServiceWatchdog.cancel(this);
+        RomGuard.restore(this);
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } catch (Throwable ignored) {
+            // The service may already have been removed by the system.
+        }
         stopSelf();
 
         instance = null;
@@ -313,6 +419,7 @@ public final class PerformanceService extends Service {
 
             Intent intent = new Intent(context, PerformanceService.class);
             intent.setAction(ACTION_STOP_SERVICE);
+            intent.putExtra(EXTRA_STOP_TOKEN, getStopToken(context));
             context.startService(intent);
         }
     }
@@ -327,6 +434,76 @@ public final class PerformanceService extends Service {
 
     public static String getLastFailure() {
         return lastFailure;
+    }
+
+    /** True when the user explicitly stopped the service from the notification. */
+    public static boolean isUserStopped(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_USER_STOPPED, false);
+    }
+
+    private static void setUserStopped(Context context, boolean stopped) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_USER_STOPPED, stopped)
+                .apply();
+    }
+
+    /**
+     * Marker file used by the optional root watchdog so that an explicit user
+     * stop is not undone by the background service. The file lives inside the
+     * app data directory, which only root can read.
+     */
+    void writeStopMarker() {
+        try {
+            java.io.File marker = new java.io.File(getFilesDir(), "stopped");
+            if (!marker.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                marker.createNewFile();
+            }
+        } catch (Throwable ignored) {
+            // The marker is a convenience for the root watchdog only.
+        }
+    }
+
+    void clearStopMarker() {
+        try {
+            java.io.File marker = new java.io.File(getFilesDir(), "stopped");
+            if (marker.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                marker.delete();
+            }
+        } catch (Throwable ignored) {
+            // The marker is a convenience for the root watchdog only.
+        }
+    }
+
+    /**
+     * True when the stop request carries this install's stop secret.
+     *
+     * <p>The service has to be exported so the shell identity (adb shell or a
+     * Shizuku session) can restart it from the background. The stop secret
+     * keeps the stop action out of reach of other apps, which is stronger
+     * than a caller uid check and uses only public API.
+     */
+    private boolean isAuthorisedStop(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        String provided = intent.getStringExtra(EXTRA_STOP_TOKEN);
+        String expected = getStopToken(this);
+        return provided != null && provided.equals(expected);
+    }
+
+    /** Per install secret used to authorise the stop action. */
+    static String getStopToken(Context context) {
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String token = preferences.getString(KEY_STOP_TOKEN, null);
+        if (token == null) {
+            token = java.util.UUID.randomUUID().toString();
+            preferences.edit().putString(KEY_STOP_TOKEN, token).apply();
+        }
+        return token;
     }
 
     private void recordFailure(String state, String message) {

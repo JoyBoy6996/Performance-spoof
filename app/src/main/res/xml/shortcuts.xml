@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher shortcut.
+
+  The normal launch flow is unchanged: the launcher icon opens the transparent
+  MainActivity, which starts the service and moves itself to the back. The
+  setup console is reachable by long pressing the launcher icon, so the user
+  gets the controls without changing what a normal tap does.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_stat_spoof"
+        android:shortcutId="setup"
+        android:shortcutLongLabel="@string/setup_shortcut_long"
+        android:shortcutShortLabel="@string/setup_shortcut_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.antutu.ABenchMark.SetupActivity"
+            android:targetPackage="com.antutu.ABenchMark" />
+    </shortcut>
+</shortcuts>
